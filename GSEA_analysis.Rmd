@@ -48,9 +48,9 @@ library(fgsea)
 library(tidyverse)
 library(DEP)
 
-degust_nvh_data<-read_csv("Normoxia_vs_Hypoxia.csv")
+degust_nvh_data<-read_csv("data/Normoxia_vs_Hypoxia.csv")
 
-degust_data<-read_csv("Angie Garriz -embryonic arrest in Green Sea Turtle_ 2021 (BIP-912).csv")
+degust_data<-read_csv("data/Baseline_comparison.csv")
 
 degust_data$N_rank<- -log10(degust_data$FDR) * degust_data$`26hrs N`
 C_vs_N_rank<-pull(degust_data, N_rank)
