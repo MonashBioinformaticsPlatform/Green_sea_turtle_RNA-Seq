@@ -1,0 +1,503 @@
+---
+title: "Three condition enrichment analysis Angie Garriz - Roger Evans"
+primary_contact: Angie Garriz, Roger Evans
+organisation: BDI
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+author: Anup Shah (anup.shah@monash.edu)
+output: 
+  html_document: 
+    theme: flatly
+    code_folding: hide
+    toc: true
+editor_options: 
+  chunk_output_type: console
+---
+
+<style type="text/css">
+h1.title {
+  font-size: 38px;
+  color: DarkBlue;
+  text-align: center;
+}
+h4.author { /* Header 4 - and the author and data headers use this too  */
+    font-size: 18px;
+  color: DarkRed;
+  text-align: center;
+}
+h4.date { /* Header 4 - and the author and data headers use this too  */
+  font-size: 18px;
+  color: DarkBlue;
+  text-align: center;
+}
+</style>
+
+
+Monash Bioinformatics Platform <br>
+JIRA:BIP-912<br>
+iLab:MBP-RE-260<br>
+
+
+## Project Overview <br>
+
+
+Green Sea turtle RNAseq and pathway analysis
+
+-3 conditions
+
+-5 replicates per condition
+
+5 mothers total.
+
+-RNA taken from each sample, we did the analysis on the older genome, want to repeat this with the new genome and subsequent pathway analysis (updated Chelonia mydas (https://www.ncbi.nlm.nih.gov/genome/13308?genome_assembly_id=1483792)
+
+There were eggs taken from clutches laid by 5 different females/biological replicates
+-3 eggs taken per clutch
+In 2 cases there was a mum twice in 6 groups (can we have the 5 different mums represented and remove the duplicate)
+They may have multiple fathers per mother
+
+Conditions
+ 
+- 0 hrs=RNA extracted when egg was removed from nest
+- 36hs N= egg incubated for an additional 36hrs + oxygen
+- 36hs H=egg incubated for an additional 36hrs + hypoxic environ
+
+
+
+<br>
+
+## Results 
+The analysis was performed using the rnasik 1.5.4 pipeline with STAR aligner, using the updated Chelonia mydas (GCF_015237465.1_rCheMyd1) reference genome.<br>
+
+
+[Degust link - 2021 analysis with updated reference](https://degust.erc.monash.edu/degust/version/dev/compare.html?code=c0b952ff40111e5ae4b2ec351f05b999#/)
+
+- The list of altered genes compared to baseline was downloaded from degust.
+- A filter of FDR < 0.05 and log fold change >=1 was applied to generate a list of altered genes
+
+- C_vs_N = 2422
+- C_vs_H = 3171
+- N_vs_H = 4022
+
+
+
+```{r upsetplot, message=FALSE, warning=FALSE, fig.width=5, fig.height=5}
+library(ComplexHeatmap)
+library(tidyverse)
+library(gprofiler2)
+library(DEP)
+#install.packages("ontologyIndex")
+library(ontologyIndex)
+#BiocManager::install("clusterProfiler")
+library(clusterProfiler)
+library(UpSetR)
+
+
+degust_nvh_data<-read_csv("Normoxia_vs_Hypoxia.csv")
+
+degust_data<-read_csv("Angie Garriz -embryonic arrest in Green Sea Turtle_ 2021 (BIP-912).csv")
+
+#colnames(degust_nvh_data)
+
+normal_altered<-degust_data %>% filter(abs(`26hrs N`)>=1) %>%
+  filter(FDR<=0.01) %>% pull(Geneid)
+
+hypoxic_altered<-degust_data %>% filter(abs(`36Hrs H`)>=1) %>%
+  filter(FDR<=0.01) %>% pull(Geneid)
+
+hypoxic_nvh_altered<-degust_nvh_data %>% filter(abs(`36Hrs H`)>=1) %>%
+  filter(FDR<=0.01) %>% pull(Geneid)
+
+
+m<-make_comb_mat(list(Normal=normal_altered, 
+                     Hypoxic=hypoxic_altered,
+                     Normal_vs_Hypoxic= hypoxic_nvh_altered))
+
+m<-fromList(list(Normal=normal_altered, 
+                      Hypoxic=hypoxic_altered,
+                 Normal_vs_Hypoxic= hypoxic_nvh_altered
+                 ))
+upset(m, point.size = 3.5, line.size = 2)
+
+
+```
+
+
+### Enrichment Analysis
+
+Enrichment Analysis was carried out using gprofiler (https://biit.cs.ut.ee/gprofiler/) with all significantly regulated proteins. Five databases were used.
+
+- Gene Ontology
+    - Biological Process
+    - Molecular Function
+    - Cellular Components
+- KEGG
+- Reactome
+
+<br>
+<br>
+
+
+
+### Result Files
+
+The results files can be found [here](http://bioinformatics.erc.monash.edu/home/asha0035/projects/angie.garriz/www/result_files.zip)
+
+
+<br>
+<br>
+
+#### Painted turtle ortholog analysis
+
+- Functional annotations for green sea turtle were not available.
+- Closest annotations found was that of Painted turtle _Chrysemys picta bellii_
+- Following annotations were available 
+  - GO:MF, GO:CC, GO:BP, KEGG, HP
+
+The result (spreadsheet) contains a list of significant biological processes, Molecular functions and pathways
+significantly (adjusted p-value <0.05) enriched in the altered genes in **Normal** and **Hypoxic** 
+condition compared to baseline along with Normal_vs_Hypoxic condition.
+<br>
+
+Following plots contains **Top 5** terms enriched (based on adjusted pvalue) in individual altered list along with its overlap. 
+
+
+
+```{r painted_turtle_ortho, message=FALSE, warning=FALSE, fig.height=8, fig.width=12}
+normal_result_cb<-degust_data %>% filter(abs(`26hrs N`)>=1) %>%
+  filter(FDR<=0.01) %>% pull(Geneid) %>% #length()
+   gost(query      = .,
+                             organism     = "cpbellii",
+                             domain_scope = "annotated",
+                             custom_bg    = NULL,
+                             correction_method = "fdr",
+                             significant  = TRUE, # return all results
+                             sources      = c("GO:BP", "GO:MF", "GO:CC", "REAC","KEGG")
+  ) %>% pluck(.,"result") %>% data.frame(.) %>% filter(significant=="TRUE")
+
+
+
+hypoxia_result_cb<-degust_data %>% filter(abs(`36Hrs H`)>=1) %>%
+  filter(FDR<=0.01) %>% pull(Geneid) %>% #length()
+  gost(query      = .,
+       organism     = "cpbellii",
+       domain_scope = "annotated",
+       custom_bg    = NULL,
+       correction_method = "fdr",
+       significant  = TRUE, # return all results
+       sources      = c("GO:BP", "GO:MF", "GO:CC", "REAC","KEGG")
+  ) %>% pluck(.,"result") %>% data.frame(.) %>% filter(significant=="TRUE")
+
+
+top_normal_results_cb<-normal_result_cb %>% arrange(p_value) %>%
+  group_by(source) %>% 
+  dplyr::slice(1:5)
+
+top_normal_results_cb$term_name<-factor(top_normal_results_cb$term_name, 
+                                        levels = top_normal_results_cb$term_name[order(top_normal_results_cb$source)])
+ggplot(top_normal_results_cb, aes(y=-log10(p_value), x=term_name,  fill=source))+
+  geom_bar(stat = "Identity")+
+  coord_flip() +
+  labs(title="C_vs_N",
+       x="", y="-log10(p_value)", fill="Database")+
+  theme_DEP1()+
+  theme(legend.position="bottom")
+
+
+
+top_hypoxic_results_cb<-hypoxia_result_cb %>% arrange(p_value) %>%
+  group_by(source) %>% 
+  dplyr::slice(1:5)
+
+top_hypoxic_results_cb$term_name<-factor(top_hypoxic_results_cb$term_name, 
+                                  levels=top_hypoxic_results_cb$term_name[order(top_hypoxic_results_cb$source)])
+ggplot(top_hypoxic_results_cb, aes(y=intersection_size, x=term_name,  fill=source))+
+  geom_bar(stat = "Identity")+
+  coord_flip() +
+  labs(title="C_vs_H",x="", y="-log10(p_value)", fill="Database")+
+  theme_DEP1()+
+  theme(legend.position="bottom")
+
+
+
+
+hypoxia_nhv_result_cb<-degust_nvh_data %>% filter(abs(`36Hrs H`)>=1) %>%
+  filter(FDR<=0.01) %>% pull(Geneid) %>% #length()
+  gost(query      = .,
+       organism     = "cpbellii",
+       domain_scope = "annotated",
+       custom_bg    = NULL,
+       correction_method = "fdr",
+       significant  = TRUE, # return all results
+       sources      = c("GO:BP", "GO:MF", "GO:CC", "REAC","KEGG")
+  ) %>% pluck(.,"result") %>% data.frame(.) %>% filter(significant=="TRUE")
+
+
+top_nvh_results_cb<-hypoxia_nhv_result_cb %>% arrange(p_value) %>%
+  group_by(source) %>% 
+  dplyr::slice(1:5)
+
+top_nvh_results_cb$term_name<-factor(top_nvh_results_cb$term_name, 
+                                  levels=top_nvh_results_cb$term_name[order(top_nvh_results_cb$source)])
+ggplot(top_nvh_results_cb, aes(y=intersection_size, x=term_name,  fill=source))+
+  geom_bar(stat = "Identity")+
+  coord_flip() +
+  labs(title="N_vs_H",x="", y="-log10(p_value)", fill="Database")+
+  theme_DEP1()+
+  theme(legend.position="bottom")
+
+
+top_nvh_results_cb$condition<-"N_vs_H"
+top_hypoxic_results_cb$condition<-"C_vs_H"
+top_normal_results_cb$condition<-"C_vs_N"
+
+
+
+combined_top_cb<-rbind(top_normal_results_cb, top_hypoxic_results_cb, top_nvh_results_cb)
+
+combined_top_cb %>% group_by(condition, term_id, source) %>%
+  mutate(condition=factor(condition, levels=c("C_vs_N", "C_vs_H", "N_vs_H")))%>%
+  ggplot(., aes(x=condition, y=term_name, color=source))+
+  geom_point(aes(size=intersection_size))+
+  labs(title="Painted Turtle orthologs",
+       y="", x="", size="# Genes", fill="Database")+
+  theme_DEP1()
+
+
+write_csv(data.frame(normal_result_cb[,1:13]), file = "C_vs_N_turtle.csv", col_names = TRUE)
+
+write_csv(data.frame(hypoxia_result_cb[,1:13]), file = "C_vs_H.csv", col_names = TRUE)
+write_csv(data.frame(hypoxia_nhv_result_cb[,1:13]), file = "N_vs_H.csv", col_names = TRUE)
+
+
+```
+<br>
+<br>
+
+#### Ontology Pruning
+
+- Most of the ontologies in biology are  directed acyclic graphs or got hierarchical structure.
+- They have parent <---> child relationships
+- Parents are the broad-level terms/functions (eg. cellular process)
+- Children are more fine grain terms (eg. cell-adhesion mediated by integrin)
+- One way to look into finer details is to prun those graphs to look into children.
+
+```{r turtle_prune, message=FALSE, warning=FALSE, fig.height=8, fig.width=12}
+data(go)
+
+normal_minimal_terms_cb<-minimal_set(go, normal_result_cb$term_id)
+
+top_normal_minimal_result_cb<-dplyr::filter(normal_result_cb[,-14], term_id %in% normal_minimal_terms_cb) %>%
+  arrange(p_value) %>%
+  group_by(source) %>% 
+  dplyr::slice(1:5) %>%
+  mutate(term_name=factor(term_name,
+                          levels=term_name[order(source)]))
+
+ggplot(top_normal_minimal_result_cb, aes(y=-log10(p_value), x=term_name,  fill=source))+
+  geom_bar(stat = "Identity")+
+  coord_flip() +
+  labs(title="C_vs_N",
+       x="", y="-log10(p_value)", fill="Database")+
+  theme_DEP1()+
+  theme(legend.position="bottom")
+
+
+hypoxia_minimal_terms_cb<-minimal_set(go, hypoxia_result_cb$term_id)
+
+top_hypoxia_minimal_result_cb<-dplyr::filter(hypoxia_result_cb[,-14], term_id %in% hypoxia_minimal_terms_cb) %>%
+  arrange(p_value) %>%
+  group_by(source) %>% 
+  dplyr::slice(1:5) %>%
+  mutate(term_name=factor(term_name,
+                          levels=term_name[order(source)]))
+
+ggplot(top_hypoxia_minimal_result_cb, aes(y=-log10(p_value), x=term_name,  fill=source))+
+  geom_bar(stat = "Identity")+
+  coord_flip() +
+  labs(title="C_vs_H",
+       x="", y="-log10(p_value)", fill="Database")+
+  theme_DEP1()+
+  theme(legend.position="bottom")
+
+hypoxia_nvh_minimal_terms_cb<-minimal_set(go, hypoxia_nhv_result_cb$term_id)
+
+top_hypoxia_nvh_minimal_result_cb<-dplyr::filter(hypoxia_nhv_result_cb[,-14], term_id %in% hypoxia_nvh_minimal_terms_cb) %>%
+  arrange(p_value) %>%
+  group_by(source) %>% 
+  dplyr::slice(1:5) %>%
+  mutate(term_name=factor(term_name,
+                          levels=term_name[order(source)]))
+
+ggplot(top_hypoxia_nvh_minimal_result_cb, aes(y=-log10(p_value), x=term_name,  fill=source))+
+  geom_bar(stat = "Identity")+
+  coord_flip() +
+  labs(title="N_vs_H",
+       x="", y="-log10(p_value)", fill="Database")+
+  theme_DEP1()+
+  theme(legend.position="bottom")
+
+
+top_hypoxia_nvh_minimal_result_cb$condition<-"N_vs_H"
+top_hypoxia_minimal_result_cb$condition<-"C_vs_H"
+top_normal_minimal_result_cb$condition<-"C_vs_N"
+
+
+combined_top_minimal_cb<-rbind(top_normal_minimal_result_cb, top_hypoxia_minimal_result_cb, top_hypoxia_nvh_minimal_result_cb)
+
+combined_top_minimal_cb %>% group_by(condition, term_id, source) %>%
+  mutate(condition=factor(condition, levels=c("C_vs_N", "C_vs_H", "N_vs_H")))%>%
+  ggplot(., aes(x=condition, y=term_name, color=source))+
+  geom_point(aes(size=intersection_size))+
+  labs(title="Painted Turtle orthologs Minimal",
+       y="", x="", size="# Genes", fill="Database")+
+  theme_DEP1()
+
+```
+
+
+
+
+<br>
+<br>
+
+#### Human orthologs analysis
+
+- Pathway annotations were not good for painted turtle
+- The green sea turtle genes were mapped to human orthologs
+- Following annotations were available 
+  - GO:MF, GO:CC, GO:BP, KEGG, Reactome
+
+The result (spreadsheet) contains a list of significant biological processes, Molecular functions and pathways
+significantly (adjusted p-value <0.05) enriched in the differentially expressed genes in **Normal** and **Hypoxic** 
+condition compared to baseline.
+<br>
+
+Following plots contains **Top 5** terms enriched (based on adjusted pvalue) in individual altered list (Normal and Hypoxic) along with its overlap. 
+
+
+```{r human_orthologs, fig.height=8, fig.width=12}
+
+#### HUMAN ORTHOLOGS
+
+normal_result_hs<-degust_data %>% filter(abs(`26hrs N`)>=1) %>%
+  filter(FDR<=0.01) %>% pull(Geneid) %>% #head()
+  gost(query      = .,
+       organism     = "hsapiens",
+       domain_scope = "annotated",
+       custom_bg    = NULL,
+       correction_method = "fdr",
+       significant  = TRUE, # return all results
+       sources      = c("GO:BP", "GO:MF", "GO:CC", "REAC","KEGG")
+  ) %>% pluck(.,"result") %>% data.frame(.) %>% filter(significant=="TRUE")
+
+
+
+hypoxia_result_hs<-degust_data %>% filter(abs(`36Hrs H`)>=1) %>%
+  filter(FDR<=0.01) %>% pull(Geneid) %>% #head()
+  gost(query      = .,
+       organism     = "hsapiens",
+       domain_scope = "annotated",
+       custom_bg    = NULL,
+       correction_method = "fdr",
+       significant  = TRUE, # return all results
+       sources      = c("GO:BP", "GO:MF", "GO:CC", "REAC","KEGG")
+  ) %>% pluck(.,"result") %>% data.frame(.) %>% filter(significant=="TRUE")
+
+
+hypoxia_nvh_result_hs<-degust_nvh_data %>% filter(abs(`36Hrs H`)>=1) %>%
+  filter(FDR<=0.01) %>% pull(Geneid) %>% #head()
+  gost(query      = .,
+       organism     = "hsapiens",
+       domain_scope = "annotated",
+       custom_bg    = NULL,
+       correction_method = "fdr",
+       significant  = TRUE, # return all results
+       sources      = c("GO:BP", "GO:MF", "GO:CC", "REAC","KEGG")
+  ) %>% pluck(.,"result") %>% data.frame(.) %>% filter(significant=="TRUE")
+
+
+
+
+top_normal_results_hs<-normal_result_hs %>% arrange(p_value) %>%
+  group_by(source) %>% 
+  dplyr::slice(1:5)
+
+top_normal_results_hs$term_name<-factor(top_normal_results_hs$term_name, 
+                                        levels = top_normal_results_hs$term_name[order(top_normal_results_hs$source)])
+ggplot(top_normal_results_hs, aes(y=intersection_size, x=term_name,  fill=source))+
+  geom_bar(stat = "Identity")+
+  coord_flip() +
+  labs(title="C_vs_N",
+       x="", y="-log10(p_value)", fill="Database")+
+  theme_DEP1()+
+  theme(legend.position="bottom")
+
+
+
+top_hypoxic_results_hs<-hypoxia_result_hs %>% arrange(p_value) %>%
+  group_by(source) %>% 
+  dplyr::slice(1:5)
+
+top_hypoxic_results_hs$term_name<-factor(top_hypoxic_results_hs$term_name, 
+                                        levels = top_hypoxic_results_hs$term_name[order(top_hypoxic_results_hs$source)])
+ggplot(top_hypoxic_results_hs, aes(y=-log10(p_value), x=term_name,  fill=source))+
+  geom_bar(stat = "Identity")+
+  coord_flip() +
+  labs(title="C_Vs_H",x="", y="-log10(p_value)", fill="Database")+
+  theme_DEP1()+
+  theme(legend.position="bottom")
+
+top_hypoxic_nhv_results_hs<-hypoxia_nvh_result_hs %>% arrange(p_value) %>%
+  group_by(source) %>% 
+  dplyr::slice(1:5)
+
+top_hypoxic_nhv_results_hs$term_name<-factor(top_hypoxic_nhv_results_hs$term_name, 
+                                  levels=top_hypoxic_nhv_results_hs$term_name[order(top_hypoxic_nhv_results_hs$source)])
+
+ggplot(top_hypoxic_nhv_results_hs, aes(y=-log10(p_value), x=term_name,  fill=source))+
+  geom_bar(stat = "Identity")+
+  coord_flip() +
+  labs(title="N_vs_H",x="", y="-log10(p_value)", fill="Database")+
+  theme_DEP1()+
+  theme(legend.position="bottom")
+
+top_hypoxic_nhv_results_hs$condition<-"N_vs_H"
+top_hypoxic_results_hs$condition<-"C_vs_H"
+top_normal_results_hs$condition<-"C_vs_N"
+
+
+
+combined_top_hs<-rbind(top_normal_results_hs, top_hypoxic_results_hs, top_hypoxic_nhv_results_hs)
+
+combined_top_hs %>% group_by(condition, term_id, source) %>%
+  mutate(condition=factor(condition, levels=c("C_vs_N", "C_vs_H","N_vs_H" )))%>%
+  ggplot(., aes(x=condition, y=term_name, color=source))+
+  geom_point(aes(size=intersection_size))+
+  labs(title="Human orthologs",
+       y="", x="", size="# Genes", fill="Database")+
+  theme_DEP1()
+
+# combined_top_hs %>% group_by(condition, term_id, source) %>%
+#   mutate(condition=factor(condition, levels=c("C_vs_N", "C_vs_H","N_vs_H" )))%>%
+#   ggplot(., aes(x=condition, y=term_name, color=source))+
+#   geom_point()+
+#   labs(title="Human orthologs",
+#        y="", x="",  fill="Database")+
+#   theme_DEP1()
+
+write_csv(data.frame(normal_result_hs[,1:13]), file = "C_vs_N_human.csv", col_names = TRUE)
+
+write_csv(data.frame(hypoxia_result_hs[,1:13]), file = "C_vs_H_human.csv", col_names = TRUE)
+write_csv(data.frame(hypoxia_nvh_result_hs[,1:13]), file = "N_vs_H_human.csv", col_names = TRUE)
+
+#system("")
+
+```
+
+
+
+<br>
+<br>
+
+<b>Acknowledging MBP </b><br>
+We are very passionate and proud of supporting Monash researchers with their Bioinformatics needs and for being part of the published research work. Where appropriate please acknowledge the contributions of MBP as co-authors or by simply stating “Authors acknowledge support of Monash Bioinformatics Platform for this work”

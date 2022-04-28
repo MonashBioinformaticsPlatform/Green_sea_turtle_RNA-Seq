@@ -1,0 +1,115 @@
+---
+title: "GSEA pathway analysis"
+primary_contact: Angie Garriz, Roger Evans
+organisation: BDI
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+author: Anup Shah (anup.shah@monash.edu)
+output: 
+  html_document: 
+    theme: flatly
+    code_folding: hide
+    toc: true
+editor_options: 
+  chunk_output_type: console
+---
+
+<style type="text/css">
+h1.title {
+  font-size: 38px;
+  color: DarkBlue;
+  text-align: center;
+}
+h4.author { /* Header 4 - and the author and data headers use this too  */
+    font-size: 18px;
+  color: DarkRed;
+  text-align: center;
+}
+h4.date { /* Header 4 - and the author and data headers use this too  */
+  font-size: 18px;
+  color: DarkBlue;
+  text-align: center;
+}
+</style>
+
+
+Monash Bioinformatics Platform <br>
+JIRA:BIP-912<br>
+iLab:MBP-RE-260<br>
+
+
+## GSEA (Reactome pathway)
+
+### Method
+- Three pairwise comparisons were ranked according to their fold change and FDR values
+- Reactome gmt file was downloaded from [Reactome.org](https://reactome.org/download/current/ReactomePathways.gmt.zip)
+
+```{r fgsear_function, message=FALSE, warning=FALSE, fig.width=7}
+library(fgsea)
+library(tidyverse)
+library(DEP)
+
+degust_nvh_data<-read_csv("Normoxia_vs_Hypoxia.csv")
+
+degust_data<-read_csv("Angie Garriz -embryonic arrest in Green Sea Turtle_ 2021 (BIP-912).csv")
+
+degust_data$N_rank<- -log10(degust_data$FDR) * degust_data$`26hrs N`
+C_vs_N_rank<-pull(degust_data, N_rank)
+names(C_vs_N_rank)<-degust_data$Geneid
+C_vs_N_rank<-sort(C_vs_N_rank, decreasing = T)
+
+degust_data$H_rank<- -log10(degust_data$FDR) * degust_data$`36Hrs H`
+C_vs_H_rank<-pull(degust_data, H_rank)
+names(C_vs_H_rank)<-degust_data$Geneid
+C_vs_H_rank<-sort(C_vs_H_rank, decreasing = T)
+
+
+degust_nvh_data$NH_rank<--log10(degust_data$FDR) * degust_nvh_data$`36Hrs H`
+N_vs_H_rank<-pull(degust_nvh_data, NH_rank)
+names(N_vs_H_rank)<-degust_nvh_data$Geneid
+N_vs_H_rank<-sort(N_vs_H_rank, decreasing = T)
+
+
+reactome_pathways<-gmtPathways("ReactomePathways.gmt")
+
+fgsea_plot<-function(rank, pathway){
+reactome_gsea<-fgsea(pathways=pathway,
+                       stats=rank,
+                       eps  = 0.0,
+                       minSize=10,
+                       maxSize=500)
+
+#print(paste0("Number of significant pathways in ", rank, " = ", sum(reactome_gsea[, padj < 0.05])))
+
+topPathwaysUp <- reactome_gsea[ES > 0][head(order(padj), n=5), pathway]
+topPathwaysDown <- reactome_gsea[ES < 0][head(order(padj), n=5), pathway]
+topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
+
+print(reactome_gsea %>% filter(pathway %in% topPathways) %>% data.frame() %>%
+  ggplot(., aes(x=NES, y= pathway)) +
+  expand_limits(x=0)+
+  geom_segment(aes(xend=0, yend=pathway)) +
+  geom_point(size=5, color="#00B2FF") +
+  labs(title=deparse(substitute(rank)),
+       x="Normalised Enrichment Score",
+       y="")+
+  theme_DEP1())
+
+pdf(file = paste0(deparse(substitute(rank)), "_gsea.pdf"))
+plotGseaTable(pathway[topPathways], rank, reactome_gsea, 
+              gseaParam = 0.5,
+              render = T)
+dev.off()
+
+data.table::fwrite(reactome_gsea, file=paste0(deparse(substitute(rank)), "_gsea.txt"),
+                   sep="\t", sep2=c("", " ", ""))
+
+}
+
+
+fgsea_plot(C_vs_N_rank, reactome_pathways)
+fgsea_plot(C_vs_H_rank, reactome_pathways)
+fgsea_plot(N_vs_H_rank, reactome_pathways)
+
+```
+
+
